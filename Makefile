@@ -23,13 +23,13 @@ clean:
 debug: pull
 	mkdir -p build/debug && \
 	cd build/debug && \
-	cmake $(GENERATOR) -DCMAKE_BUILD_TYPE=Debug ${BUILD_FLAGS} ../../duckdb/CMakeLists.txt -DEXTERNAL_EXTENSION_DIRECTORIES=../../sqlite_scanner -B. && \
+	cmake $(GENERATOR) -DCMAKE_BUILD_TYPE=Debug ${BUILD_FLAGS} ../../duckdb/CMakeLists.txt -DEXTERNAL_EXTENSION_DIRECTORIES=../../sqlite_scanner-hinxx -B. && \
 	cmake --build . --config Debug
 
 release: pull 
 	mkdir -p build/release && \
 	cd build/release && \
-	cmake $(GENERATOR) -DCMAKE_BUILD_TYPE=RelWithDebInfo ${BUILD_FLAGS} ../../duckdb/CMakeLists.txt -DEXTERNAL_EXTENSION_DIRECTORIES=../../sqlite_scanner -B. && \
+	cmake $(GENERATOR) -DCMAKE_BUILD_TYPE=RelWithDebInfo ${BUILD_FLAGS} ../../duckdb/CMakeLists.txt -DEXTERNAL_EXTENSION_DIRECTORIES=../../sqlite_scanner-hinxx -B. && \
 	cmake --build . --config Release
 
 test: release

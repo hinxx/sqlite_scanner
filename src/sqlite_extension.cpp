@@ -31,7 +31,8 @@ DUCKDB_EXTENSION_API void sqlite_scanner_init(duckdb::DatabaseInstance &db) {
 	auto &config = DBConfig::GetConfig(db);
 	config.AddExtensionOption("sqlite_all_varchar", "Load all SQLite columns as VARCHAR columns", LogicalType::BOOLEAN);
 
-	config.storage_extensions["sqlite_scanner"] = make_unique<SQLiteStorageExtension>();
+	//   # DO NOT INCLUDE THE STORAGE PART; NOT NEEDED FOR READONLY ACCESS
+	// config.storage_extensions["sqlite_scanner"] = make_unique<SQLiteStorageExtension>();
 
 	con.Commit();
 }
@@ -40,7 +41,8 @@ DUCKDB_EXTENSION_API const char *sqlite_scanner_version() {
 	return DuckDB::LibraryVersion();
 }
 
-DUCKDB_EXTENSION_API void sqlite_scanner_storage_init(DBConfig &config) {
-	config.storage_extensions["sqlite_scanner"] = make_unique<SQLiteStorageExtension>();
-}
+//   # DO NOT INCLUDE THE STORAGE PART; NOT NEEDED FOR READONLY ACCESS
+// DUCKDB_EXTENSION_API void sqlite_scanner_storage_init(DBConfig &config) {
+// 	config.storage_extensions["sqlite_scanner"] = make_unique<SQLiteStorageExtension>();
+// }
 }
