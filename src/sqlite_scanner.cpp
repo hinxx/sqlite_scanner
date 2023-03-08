@@ -14,6 +14,9 @@
 #include "duckdb/storage/storage_extension.hpp"
 
 #include <cmath>
+#include <iostream>
+#include <thread>
+
 
 namespace duckdb {
 
@@ -44,9 +47,15 @@ struct SqliteGlobalState : public GlobalTableFunctionState {
 static unique_ptr<FunctionData> SqliteBind(ClientContext &context, TableFunctionBindInput &input,
                                            vector<LogicalType> &return_types, vector<string> &names) {
 
+	// std::cout << ">>> " << __func__ << std::endl;
+    
+    std::thread::id this_id = std::this_thread::get_id();
+
 	auto result = make_unique<SqliteBindData>();
 	result->file_name = input.inputs[0].GetValue<string>();
 	result->table_name = input.inputs[1].GetValue<string>();
+
+	std::cout << this_id << " >>> " << __func__ << " file_name: " << result->file_name << " table_name: " << result->table_name << std::endl;
 
 	SQLiteDB db;
 	SQLiteStatement stmt;
@@ -64,6 +73,7 @@ static unique_ptr<FunctionData> SqliteBind(ClientContext &context, TableFunction
 	for (auto &column : columns.Logical()) {
 		names.push_back(column.GetName());
 		return_types.push_back(column.GetType());
+    	std::cout << ">>> " << __func__ << " name: " << column.GetName() << " type: " << column.GetType().ToString() << std::endl;
 	}
 
 	if (names.empty()) {
@@ -85,6 +95,8 @@ static void SqliteInitInternal(ClientContext &context, const SqliteBindData *bin
                                idx_t rowid_min, idx_t rowid_max) {
 	D_ASSERT(bind_data);
 	D_ASSERT(rowid_min <= rowid_max);
+
+	std::cout << ">>> " << __func__ << std::endl;
 
 	local_state.done = false;
 	// we may have leftover statements or connections from a previous call to this function
@@ -110,6 +122,9 @@ static void SqliteInitInternal(ClientContext &context, const SqliteBindData *bin
 		// we are scanning the entire table - no need for a WHERE clause
 		D_ASSERT(rowid_min == 0);
 	}
+
+	std::cout << ">>> " << __func__ << " SQL " << sql.c_str() << std::endl;
+
 	local_state.stmt = local_state.db->Prepare(sql.c_str());
 }
 
@@ -134,6 +149,7 @@ static bool SqliteParallelStateNext(ClientContext &context, const FunctionData *
 	D_ASSERT(bind_data_p);
 	auto bind_data = (const SqliteBindData *)bind_data_p;
 	lock_guard<mutex> parallel_lock(gstate.lock);
+	std::cout << ">>> " << __func__ << " gstate.position " << gstate.position << " bind_data->max_rowid " << bind_data->max_rowid << ((gstate.position < bind_data->max_rowid) ? true : false) << std::endl;
 	if (gstate.position < bind_data->max_rowid) {
 		auto start = gstate.position;
 		auto end = start + bind_data->rows_per_group - 1;
@@ -146,6 +162,9 @@ static bool SqliteParallelStateNext(ClientContext &context, const FunctionData *
 
 static unique_ptr<LocalTableFunctionState>
 SqliteInitLocalState(ExecutionContext &context, TableFunctionInitInput &input, GlobalTableFunctionState *global_state) {
+
+	std::cout << ">>> " << __func__ << std::endl;
+
 	auto bind_data = (const SqliteBindData *)input.bind_data;
 	auto &gstate = (SqliteGlobalState &)*global_state;
 	auto result = make_unique<SqliteLocalState>();
@@ -159,12 +178,19 @@ SqliteInitLocalState(ExecutionContext &context, TableFunctionInitInput &input, G
 
 static unique_ptr<GlobalTableFunctionState> SqliteInitGlobalState(ClientContext &context,
                                                                   TableFunctionInitInput &input) {
+	std::cout << ">>> " << __func__ << std::endl;
+
 	auto result = make_unique<SqliteGlobalState>(SqliteMaxThreads(context, input.bind_data));
 	result->position = 0;
 	return std::move(result);
 }
 
 static void SqliteScan(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
+    
+    std::thread::id this_id = std::this_thread::get_id();
+
+	std::cout << this_id << " >>> " << __func__ << std::endl;
+
 	auto &state = (SqliteLocalState &)*data.local_state;
 	auto &gstate = (SqliteGlobalState &)*data.global_state;
 	auto bind_data = (const SqliteBindData *)data.bind_data;
@@ -178,13 +204,16 @@ static void SqliteScan(ClientContext &context, TableFunctionInput &data, DataChu
 
 		idx_t out_idx = 0;
 		while (true) {
+        	std::cout << this_id << " >>> " << __func__ << " out_idx " << out_idx << std::endl;
 			if (out_idx == STANDARD_VECTOR_SIZE) {
+            	std::cout << this_id << " >>> " << __func__ << " out_idx " << out_idx << " == STANDARD_VECTOR_SIZE" << std::endl;
 				output.SetCardinality(out_idx);
 				return;
 			}
 			auto &stmt = state.stmt;
 			auto has_more = stmt.Step();
 			if (!has_more) {
+            	std::cout << this_id << " >>> " << __func__ << " out_idx " << out_idx << " !has_more" << std::endl;
 				state.done = true;
 				output.SetCardinality(out_idx);
 				break;
@@ -241,6 +270,9 @@ static void SqliteScan(ClientContext &context, TableFunctionInput &data, DataChu
 static string SqliteToString(const FunctionData *bind_data_p) {
 	D_ASSERT(bind_data_p);
 	auto bind_data = (const SqliteBindData *)bind_data_p;
+
+	// std::cout << ">>> " << __func__ << " file:table " << StringUtil::Format("%s:%s", bind_data->file_name, bind_data->table_name) << std::endl;
+
 	return StringUtil::Format("%s:%s", bind_data->file_name, bind_data->table_name);
 }
 
@@ -259,6 +291,9 @@ SqliteStatistics(ClientContext &context, const FunctionData *bind_data_p,
 SqliteScanFunction::SqliteScanFunction()
     : TableFunction("sqlite_scan", {LogicalType::VARCHAR, LogicalType::VARCHAR}, SqliteScan, SqliteBind,
                     SqliteInitGlobalState, SqliteInitLocalState) {
+
+	std::cout << ">>> " << __func__ << std::endl;
+
 	cardinality = SqliteCardinality;
 	to_string = SqliteToString;
 	projection_pushdown = true;
@@ -276,6 +311,8 @@ struct AttachFunctionData : public TableFunctionData {
 static unique_ptr<FunctionData> AttachBind(ClientContext &context, TableFunctionBindInput &input,
                                            vector<LogicalType> &return_types, vector<string> &names) {
 
+	std::cout << ">>> " << __func__ << std::endl;
+
 	auto result = make_unique<AttachFunctionData>();
 	result->file_name = input.inputs[0].GetValue<string>();
 
@@ -291,6 +328,9 @@ static unique_ptr<FunctionData> AttachBind(ClientContext &context, TableFunction
 }
 
 static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+
+	std::cout << ">>> " << __func__ << std::endl;
+
 	auto &data = (AttachFunctionData &)*data_p.bind_data;
 	if (data.finished) {
 		return;
@@ -298,6 +338,8 @@ static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, D
 
 	SQLiteDB db = SQLiteDB::Open(data.file_name);
 	auto dconn = Connection(context.db->GetDatabase(context));
+
+	std::cout << ">>> " << __func__ << " part1 " << std::endl;
 	{
 		auto tables = db.GetTables();
 		for (auto &table_name : tables) {
@@ -305,10 +347,12 @@ static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, D
 			    ->CreateView(table_name, data.overwrite, false);
 		}
 	}
+	std::cout << ">>> " << __func__ << " part2 " << std::endl;
 	{
 		SQLiteStatement stmt = db.Prepare("SELECT sql FROM sqlite_master WHERE type='view'");
 		while (stmt.Step()) {
 			auto view_sql = stmt.GetValue<string>(0);
+        	std::cout << ">>> " << __func__ << " view SQL " << stmt.GetValue<string>(0) << std::endl;
 			dconn.Query(view_sql);
 		}
 	}
@@ -317,6 +361,9 @@ static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, D
 
 SqliteAttachFunction::SqliteAttachFunction()
     : TableFunction("sqlite_attach", {LogicalType::VARCHAR}, AttachFunction, AttachBind) {
+
+	std::cout << ">>> " << __func__ << std::endl;
+
 	named_parameters["overwrite"] = LogicalType::BOOLEAN;
 }
 
