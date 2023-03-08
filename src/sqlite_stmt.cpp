@@ -155,4 +155,8 @@ void SQLiteStatement::BindValue(Vector &col, idx_t c, idx_t r) {
 	}
 }
 
+const char *SQLiteStatement::ToString() {
+	return sqlite3_sql(stmt);
+}
+
 } // namespace duckdb

@@ -25,6 +25,9 @@ struct SqliteBindData : public TableFunctionData {
 
 	idx_t rows_per_group = 122880;
 	SQLiteDB *global_db;
+
+	// debug
+	idx_t sequence_;
 };
 
 class SqliteScanFunction : public TableFunction {

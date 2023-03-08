@@ -52,6 +52,7 @@ static unique_ptr<FunctionData> SqliteBind(ClientContext &context, TableFunction
     std::thread::id this_id = std::this_thread::get_id();
 
 	auto result = make_unique<SqliteBindData>();
+	result->sequence_ = 0;
 	result->file_name = input.inputs[0].GetValue<string>();
 	result->table_name = input.inputs[1].GetValue<string>();
 
@@ -73,7 +74,7 @@ static unique_ptr<FunctionData> SqliteBind(ClientContext &context, TableFunction
 	for (auto &column : columns.Logical()) {
 		names.push_back(column.GetName());
 		return_types.push_back(column.GetType());
-    	std::cout << ">>> " << __func__ << " name: " << column.GetName() << " type: " << column.GetType().ToString() << std::endl;
+    	// std::cout << ">>> " << __func__ << " name: " << column.GetName() << " type: " << column.GetType().ToString() << std::endl;
 	}
 
 	if (names.empty()) {
@@ -84,6 +85,7 @@ static unique_ptr<FunctionData> SqliteBind(ClientContext &context, TableFunction
 		result->max_rowid = idx_t(-1);
 		result->rows_per_group = idx_t(-1);
 	}
+	std::cout << this_id << " >>> " << __func__ << " max_rowid: " << result->max_rowid << " rows_per_group: " << result->rows_per_group << std::endl;
 
 	result->names = names;
 	result->types = return_types;
@@ -96,7 +98,9 @@ static void SqliteInitInternal(ClientContext &context, const SqliteBindData *bin
 	D_ASSERT(bind_data);
 	D_ASSERT(rowid_min <= rowid_max);
 
-	std::cout << ">>> " << __func__ << std::endl;
+    std::thread::id this_id = std::this_thread::get_id();
+
+	std::cout << this_id << " >>> " << __func__ << std::endl;
 
 	local_state.done = false;
 	// we may have leftover statements or connections from a previous call to this function
@@ -104,6 +108,7 @@ static void SqliteInitInternal(ClientContext &context, const SqliteBindData *bin
 	if (!local_state.db) {
 		local_state.owned_db = SQLiteDB::Open(bind_data->file_name.c_str());
 		local_state.db = &local_state.owned_db;
+		std::cout << this_id << " >>> " << __func__ << " created local_state.db " << local_state.db << std::endl;
 	}
 
 	auto col_names = StringUtil::Join(
@@ -123,7 +128,7 @@ static void SqliteInitInternal(ClientContext &context, const SqliteBindData *bin
 		D_ASSERT(rowid_min == 0);
 	}
 
-	std::cout << ">>> " << __func__ << " SQL " << sql.c_str() << std::endl;
+	std::cout << this_id << " >>> " << __func__ << " prepared SQL:" << std::endl << sql.c_str() << std::endl;
 
 	local_state.stmt = local_state.db->Prepare(sql.c_str());
 }
@@ -149,7 +154,8 @@ static bool SqliteParallelStateNext(ClientContext &context, const FunctionData *
 	D_ASSERT(bind_data_p);
 	auto bind_data = (const SqliteBindData *)bind_data_p;
 	lock_guard<mutex> parallel_lock(gstate.lock);
-	std::cout << ">>> " << __func__ << " gstate.position " << gstate.position << " bind_data->max_rowid " << bind_data->max_rowid << ((gstate.position < bind_data->max_rowid) ? true : false) << std::endl;
+    std::thread::id this_id = std::this_thread::get_id();
+	std::cout << this_id << " >>> " << __func__ << " gstate.position " << gstate.position << " bind_data->max_rowid " << bind_data->max_rowid << " status " << ((gstate.position < bind_data->max_rowid) ? true : false) << std::endl;
 	if (gstate.position < bind_data->max_rowid) {
 		auto start = gstate.position;
 		auto end = start + bind_data->rows_per_group - 1;
@@ -163,13 +169,14 @@ static bool SqliteParallelStateNext(ClientContext &context, const FunctionData *
 static unique_ptr<LocalTableFunctionState>
 SqliteInitLocalState(ExecutionContext &context, TableFunctionInitInput &input, GlobalTableFunctionState *global_state) {
 
-	std::cout << ">>> " << __func__ << std::endl;
+    std::thread::id this_id = std::this_thread::get_id();
 
 	auto bind_data = (const SqliteBindData *)input.bind_data;
 	auto &gstate = (SqliteGlobalState &)*global_state;
 	auto result = make_unique<SqliteLocalState>();
 	result->column_ids = input.column_ids;
 	result->db = bind_data->global_db;
+	std::cout << this_id << " >>> " << __func__ << " global db =>> result->db " << result->db << std::endl;
 	if (!SqliteParallelStateNext(context.client, input.bind_data, *result, gstate)) {
 		result->done = true;
 	}
@@ -178,7 +185,8 @@ SqliteInitLocalState(ExecutionContext &context, TableFunctionInitInput &input, G
 
 static unique_ptr<GlobalTableFunctionState> SqliteInitGlobalState(ClientContext &context,
                                                                   TableFunctionInitInput &input) {
-	std::cout << ">>> " << __func__ << std::endl;
+    std::thread::id this_id = std::this_thread::get_id();
+	std::cout << this_id << " >>> " << __func__ << std::endl;
 
 	auto result = make_unique<SqliteGlobalState>(SqliteMaxThreads(context, input.bind_data));
 	result->position = 0;
@@ -189,11 +197,11 @@ static void SqliteScan(ClientContext &context, TableFunctionInput &data, DataChu
     
     std::thread::id this_id = std::this_thread::get_id();
 
-	std::cout << this_id << " >>> " << __func__ << std::endl;
 
 	auto &state = (SqliteLocalState &)*data.local_state;
 	auto &gstate = (SqliteGlobalState &)*data.global_state;
 	auto bind_data = (const SqliteBindData *)data.bind_data;
+	std::cout << this_id << " >>> " << __func__ << " " << state.stmt.ToString() << std::endl;
 
 	while (output.size() == 0) {
 		if (state.done) {
@@ -204,7 +212,7 @@ static void SqliteScan(ClientContext &context, TableFunctionInput &data, DataChu
 
 		idx_t out_idx = 0;
 		while (true) {
-        	std::cout << this_id << " >>> " << __func__ << " out_idx " << out_idx << std::endl;
+        	// std::cout << this_id << " >>> " << __func__ << " out_idx " << out_idx << std::endl;
 			if (out_idx == STANDARD_VECTOR_SIZE) {
             	std::cout << this_id << " >>> " << __func__ << " out_idx " << out_idx << " == STANDARD_VECTOR_SIZE" << std::endl;
 				output.SetCardinality(out_idx);
@@ -352,7 +360,7 @@ static void AttachFunction(ClientContext &context, TableFunctionInput &data_p, D
 		SQLiteStatement stmt = db.Prepare("SELECT sql FROM sqlite_master WHERE type='view'");
 		while (stmt.Step()) {
 			auto view_sql = stmt.GetValue<string>(0);
-        	std::cout << ">>> " << __func__ << " view SQL " << stmt.GetValue<string>(0) << std::endl;
+        	std::cout << ">>> " << __func__ << " view SQL:" << std::endl << stmt.GetValue<string>(0) << std::endl;
 			dconn.Query(view_sql);
 		}
 	}

@@ -5,17 +5,24 @@
 #include "sqlite_scanner.hpp"
 #include "duckdb/storage/table_storage_info.hpp"
 
+#include <iostream>
+
+
 namespace duckdb {
 
 SQLiteTableEntry::SQLiteTableEntry(Catalog *catalog, SchemaCatalogEntry *schema, CreateTableInfo &info)
     : TableCatalogEntry(catalog, schema, info) {
+	std::cout << ">>> " << __func__ << std::endl;
 }
 
 unique_ptr<BaseStatistics> SQLiteTableEntry::GetStatistics(ClientContext &context, column_t column_id) {
+	std::cout << ">>> " << __func__ << std::endl;
 	return nullptr;
 }
 
 TableFunction SQLiteTableEntry::GetScanFunction(ClientContext &context, unique_ptr<FunctionData> &bind_data) {
+	std::cout << ">>> " << __func__ << std::endl;
+
 	auto result = make_unique<SqliteBindData>();
 	for (auto &col : columns.Logical()) {
 		result->names.push_back(col.GetName());
@@ -44,6 +51,7 @@ TableFunction SQLiteTableEntry::GetScanFunction(ClientContext &context, unique_p
 }
 
 TableStorageInfo SQLiteTableEntry::GetStorageInfo(ClientContext &context) {
+	std::cout << ">>> " << __func__ << std::endl;
 	auto &transaction = (SQLiteTransaction &)Transaction::Get(context, *catalog);
 	auto &db = transaction.GetDB();
 	TableStorageInfo result;

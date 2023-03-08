@@ -10,20 +10,26 @@
 #include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
 #include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 
+#include <iostream>
+
+
 namespace duckdb {
 
 static unique_ptr<Catalog> SQLiteAttach(StorageExtensionInfo *storage_info, AttachedDatabase &db, const string &name,
                                         AttachInfo &info, AccessMode access_mode) {
+	std::cout << ">>> " << __func__ << std::endl;
 	return make_unique<SQLiteCatalog>(db, info.path, access_mode);
 }
 
 static unique_ptr<TransactionManager> SQLiteCreateTransactionManager(StorageExtensionInfo *storage_info,
                                                                      AttachedDatabase &db, Catalog &catalog) {
+	std::cout << ">>> " << __func__ << std::endl;
 	auto &sqlite_catalog = (SQLiteCatalog &)catalog;
 	return make_unique<SQLiteTransactionManager>(db, sqlite_catalog);
 }
 
 SQLiteStorageExtension::SQLiteStorageExtension() {
+	std::cout << ">>> " << __func__ << std::endl;
 	attach = SQLiteAttach;
 	create_transaction_manager = SQLiteCreateTransactionManager;
 }
